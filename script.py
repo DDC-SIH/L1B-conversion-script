@@ -128,7 +128,7 @@ class L1BProcessor:
         
         # Set geostationary projection
         srs = osr.SpatialReference()
-        proj4_str = (f"+proj=geos +h=35785831 +lon_0=74.0 "
+        proj4_str = (f"+proj=geos +h=35785831 +lon_0=73.6 "
                     "+x_0=0 +y_0=0 +a=6378137 +b=6356752.31414 +units=m +no_defs")
         srs.ImportFromProj4(proj4_str)
         ds.SetProjection(srs.ExportToWkt())
