@@ -26,6 +26,39 @@ class L1BProcessor:
             globe=self.globe
         )
 
+    def find_bounding_square(self, data, fill_value):
+        """Find valid data bounds from center outwards"""
+        rows, cols = data.shape
+        center_y, center_x = rows // 2, cols // 2
+        
+        # Scan from center in all directions
+        top = center_y
+        while top > 0 and data[top, center_x] != fill_value:
+            top -= 1
+        top += 1  # Adjust to last valid pixel
+        
+        bottom = center_y
+        while bottom < rows - 1 and data[bottom, center_x] != fill_value:
+            bottom += 1
+        bottom -= 1
+        
+        left = center_x
+        while left > 0 and data[center_y, left] != fill_value:
+            left -= 1
+        left += 1
+        
+        right = center_x
+        while right < cols - 1 and data[center_y, right] != fill_value:
+            right += 1
+        right -= 1
+        
+        return {
+            "top_left": (top, left),
+            "top_right": (top, right),
+            "bottom_left": (bottom, left),
+            "bottom_right": (bottom, right)
+        }
+
     def count_cold_space(self):
         """Count cold space pixels for each band"""
         cold_space_counts = {}
@@ -35,8 +68,14 @@ class L1BProcessor:
                 for band_name, fill_value in bands.items():
                     if band_name in h5f:
                         data = h5f[band_name][:]
+                        if len(data.shape) == 3:
+                            data = data[0]
                         cold_count = np.sum(data == fill_value)
-                        cold_space_counts[band_type][band_name] = cold_count
+                        valid_bounds = self.find_bounding_square(data, fill_value)
+                        cold_space_counts[band_type][band_name] = {
+                            'total_cold_pixels': cold_count,
+                            'bounds': valid_bounds
+                        }
         return cold_space_counts
 
     def read_clean_data(self):
@@ -49,8 +88,18 @@ class L1BProcessor:
                         data = h5f[band_name][:]
                         if len(data.shape) == 3:
                             data = data[0]
-                        mask = data != fill_value
-                        clean_data[band_name] = np.ma.masked_array(data, ~mask)
+                            
+                        # Get valid bounds
+                        bounds = self.find_bounding_square(data, fill_value)
+                        top = bounds['top_left'][0]
+                        bottom = bounds['bottom_left'][0]
+                        left = bounds['top_left'][1]
+                        right = bounds['top_right'][1]
+                        
+                        # Subset data using bounds
+                        subset = data[top:bottom+1, left:right+1]
+                        mask = subset != fill_value
+                        clean_data[band_name] = np.ma.masked_array(subset, ~mask)
         return clean_data
 
     def compute_resolution(self, array_size):
@@ -68,26 +117,26 @@ class L1BProcessor:
         }
 
     def save_geotiff(self, data, output_path, band_name):
-        """Save data as GeoTIFF"""
-        # Initial GeoTIFF with geostationary projection
+        """Save data as GeoTIFF with proper projections"""
         driver = gdal.GetDriverByName('GTiff')
         rows, cols = data.shape
         
-        # Create initial file
+        # Create initial file with geostationary projection
         temp_tiff = f"temp_{band_name}_geos.tif"
         ds = driver.Create(temp_tiff, cols, rows, 1, gdal.GDT_Float32)
         ds.GetRasterBand(1).WriteArray(data)
         
-        # Set projection
+        # Set geostationary projection
         srs = osr.SpatialReference()
-        proj4_str = (f"+proj=geos +h=35752815.622 +lon_0=74.0 "
+        proj4_str = (f"+proj=geos +h=35785831 +lon_0=74.0 "
                     "+x_0=0 +y_0=0 +a=6378137 +b=6356752.31414 +units=m +no_defs")
         srs.ImportFromProj4(proj4_str)
         ds.SetProjection(srs.ExportToWkt())
         
-        # Set geotransform
+        # Set geotransform based on resolution
         pixel_size = self.compute_resolution(cols)['nadir_resolution_km'] * 1000
-        ds.SetGeoTransform([-5557748.0, pixel_size, 0, 5557748.0, 0, -pixel_size])
+        extent = 5557748.0  # Standard geostationary extent
+        ds.SetGeoTransform([-extent, pixel_size, 0, extent, 0, -pixel_size])
         ds = None
         
         # Warp to WGS84

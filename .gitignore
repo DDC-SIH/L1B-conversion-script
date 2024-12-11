@@ -1,1 +1,7 @@
 3RIMG_04SEP2024_1015_L1B_STD_V01R00.h5
+output_geotiffs/IMG_MIR_wgs84.tif
+output_geotiffs/IMG_SWIR_wgs84.tif
+output_geotiffs/IMG_TIR1_wgs84.tif
+output_geotiffs/IMG_TIR2_wgs84.tif
+output_geotiffs/IMG_VIS_wgs84.tif
+output_geotiffs/IMG_WV_wgs84.tif
