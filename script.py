@@ -1,7 +1,7 @@
 import h5py
 import numpy as np
 import cartopy.crs as ccrs
-from osgeo import gdal, osr
+from osgeo import gdal
 import os
 import matplotlib.pyplot as plt
 
@@ -121,25 +121,31 @@ class L1BProcessor:
         driver = gdal.GetDriverByName('GTiff')
         rows, cols = data.shape
         
-        # Create initial file with geostationary projection
+        # Get extent from geostationary projection
+        extent = self.geos_proj.x_limits + self.geos_proj.y_limits
+        left, right = extent[:2]
+        bottom, top = extent[2:]
+        
+        # Create initial file
         temp_tiff = f"temp_{band_name}_geos.tif"
         ds = driver.Create(temp_tiff, cols, rows, 1, gdal.GDT_Float32)
         ds.GetRasterBand(1).WriteArray(data)
         
-        # Set geostationary projection
-        srs = osr.SpatialReference()
-        proj4_str = (f"+proj=geos +h=35785831 +lon_0=73.6 "
-                    "+x_0=0 +y_0=0 +a=6378137 +b=6356752.31414 +units=m +no_defs")
-        srs.ImportFromProj4(proj4_str)
-        ds.SetProjection(srs.ExportToWkt())
+        # Set projection from cartopy
+        wkt = self.geos_proj.to_wkt()
+        ds.SetProjection(wkt)
         
-        # Set geotransform based on resolution
-        pixel_size = self.compute_resolution(cols)['nadir_resolution_km'] * 1000
-        extent = 5557748.0  # Standard geostationary extent
-        ds.SetGeoTransform([-extent, pixel_size, 0, extent, 0, -pixel_size])
+        # Calculate pixel size and set geotransform
+        pixel_x = (right - left) / cols
+        pixel_y = (top - bottom) / rows
+        ds.SetGeoTransform([left, pixel_x, 0, top, 0, -pixel_y])
         ds = None
         
-        # Warp to WGS84
+        # First translate to intermediate projection
+        translated_tiff = f"translated_{band_name}.tif"
+        gdal.Translate(translated_tiff, temp_tiff)
+        
+        # Then warp to WGS84
         output_file = f"{output_path}/{band_name}_wgs84.tif"
         warp_options = gdal.WarpOptions(
             format='GTiff',
@@ -148,10 +154,12 @@ class L1BProcessor:
             yRes=0.036,
             resampleAlg=gdal.GRA_Bilinear
         )
-        gdal.Warp(output_file, temp_tiff, options=warp_options)
+        gdal.Warp(output_file, translated_tiff, options=warp_options)
         
-        # Cleanup
+        # Cleanup temporary files
         os.remove(temp_tiff)
+        os.remove(translated_tiff)
+        
         return output_file
 
     def process_all(self, output_dir):
