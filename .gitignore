@@ -5,3 +5,11 @@ output_geotiffs/IMG_TIR1_wgs84.tif
 output_geotiffs/IMG_TIR2_wgs84.tif
 output_geotiffs/IMG_VIS_wgs84.tif
 output_geotiffs/IMG_WV_wgs84.tif
+output_geotiffs/IMG_MIR_cog.tif
+output_geotiffs/IMG_SWIR_cog.tif
+output_geotiffs/IMG_SWIR_wgs84_cog.tif.aux.xml
+output_geotiffs/IMG_SWIR_wgs84.tif.aux.xml
+output_geotiffs/IMG_TIR1_cog.tif
+output_geotiffs/IMG_TIR2_cog.tif
+output_geotiffs/IMG_VIS_cog.tif
+output_geotiffs/IMG_WV_cog.tif
