@@ -116,8 +116,39 @@ class L1BProcessor:
             'nadir_resolution_km': nadir_resolution/1000
         }
 
+    def create_cog(self, input_tiff, output_tiff):
+        """Convert GeoTIFF to Cloud Optimized GeoTIFF"""
+        cog_driver = gdal.GetDriverByName('COG')
+        if cog_driver is None:
+            # Fallback method using translate if COG driver is not available
+            translate_options = gdal.TranslateOptions(
+                format='COG',
+                creationOptions=[
+                    'COMPRESS=DEFLATE',
+                    'PREDICTOR=2',
+                    'BLOCKSIZE=512',
+                    'OVERVIEW_RESAMPLING=AVERAGE'
+                ]
+            )
+            gdal.Translate(output_tiff, input_tiff, options=translate_options)
+        else:
+            # Use COG driver directly if available
+            ds = gdal.Open(input_tiff)
+            cog_driver.CreateCopy(
+                output_tiff, 
+                ds, 
+                options=[
+                    'COMPRESS=DEFLATE',
+                    'PREDICTOR=2',
+                    'BLOCKSIZE=512',
+                    'OVERVIEW_RESAMPLING=AVERAGE'
+                ]
+            )
+            ds = None
+        return output_tiff
+
     def save_geotiff(self, data, output_path, band_name):
-        """Save data as GeoTIFF with proper projections"""
+        """Save data as Cloud Optimized GeoTIFF with proper projections"""
         driver = gdal.GetDriverByName('GTiff')
         rows, cols = data.shape
         
@@ -145,8 +176,8 @@ class L1BProcessor:
         translated_tiff = f"translated_{band_name}.tif"
         gdal.Translate(translated_tiff, temp_tiff)
         
-        # Then warp to WGS84
-        output_file = f"{output_path}/{band_name}_wgs84.tif"
+        # Create intermediate WGS84 GeoTIFF
+        intermediate_wgs84 = f"{output_path}/{band_name}_wgs84_temp.tif"
         warp_options = gdal.WarpOptions(
             format='GTiff',
             dstSRS='EPSG:4326',
@@ -154,11 +185,16 @@ class L1BProcessor:
             yRes=0.036,
             resampleAlg=gdal.GRA_Bilinear
         )
-        gdal.Warp(output_file, translated_tiff, options=warp_options)
+        gdal.Warp(intermediate_wgs84, translated_tiff, options=warp_options)
+
+        # Convert to COG
+        output_file = f"{output_path}/{band_name}_wgs84_cog.tif"
+        self.create_cog(intermediate_wgs84, output_file)
         
         # Cleanup temporary files
         os.remove(temp_tiff)
         os.remove(translated_tiff)
+        os.remove(intermediate_wgs84)
         
         return output_file
 
